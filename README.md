@@ -53,6 +53,91 @@ Options:
   -V, --version              Print version
 ```
 
+## 后台运行与服务化
+
+### Linux (Systemd)
+
+推荐使用 `systemd` 管理服务。
+
+1. 创建服务文件 `/etc/systemd/system/rust-socks5.service`:
+
+```ini
+[Unit]
+Description=Rust SOCKS5 Proxy Service
+After=network.target
+
+[Service]
+Type=simple
+User=nobody
+ExecStart=/usr/local/bin/rust-socks5-tool --port 1080 --username myuser --password mypass
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
+```
+
+2. 启动并设置开机自启:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl start rust-socks5
+sudo systemctl enable rust-socks5
+```
+
+### macOS (Launchd)
+
+使用 `launchd` 进行管理。
+
+1. 创建配置文件 `~/Library/LaunchAgents/com.user.rust-socks5.plist`:
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.user.rust-socks5</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/path/to/rust-socks5-tool</string>
+        <string>--port</string>
+        <string>1080</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+</dict>
+</plist>
+```
+
+2. 加载服务:
+
+```bash
+launchctl load ~/Library/LaunchAgents/com.user.rust-socks5.plist
+```
+
+### Windows
+
+#### 方法 1: 使用 NSSM (推荐)
+
+[NSSM](https://nssm.cc/) 是一个封装器，可以将普通 exe 注册为 Windows 服务。
+
+1. 下载并解压 NSSM。
+2. 以管理员身份运行 CMD:
+   ```cmd
+   nssm install RustSocks5
+   ```
+3. 在弹出的窗口中选择 `rust-socks5-tool.exe` 路径，并在 Arguments 中填入参数（如 `--port 1080`）。
+4. 点击 "Install service"。
+5. 启动服务: `nssm start RustSocks5`
+
+#### 方法 2: PowerShell 后台运行
+
+```powershell
+Start-Process -FilePath ".\rust-socks5-tool.exe" -ArgumentList "--port 1080" -NoNewWindow -PassThru
+```
+
 ## CI/CD 持续集成
 
 本项目使用 GitHub Actions 进行持续集成。
