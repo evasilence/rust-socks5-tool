@@ -48,26 +48,43 @@ async fn main() -> Result<()> {
     }
 
     loop {
-        let (socket, addr) = listener.accept().await?;
-        info!("Accepted connection from {}", addr);
+        tokio::select! {
+            accept_result = listener.accept() => {
+                match accept_result {
+                    Ok((socket, addr)) => {
+                        info!("Accepted connection from {}", addr);
 
-        // Set TCP Keepalive to prevent dead connections
-        let sock_ref = socket2::SockRef::from(&socket);
-        let mut ka = socket2::TcpKeepalive::new();
-        ka = ka.with_time(Duration::from_secs(60));
-        ka = ka.with_interval(Duration::from_secs(10));
-        
-        if let Err(e) = sock_ref.set_tcp_keepalive(&ka) {
-             warn!("Failed to set TCP keepalive for {}: {}", addr, e);
-        }
+                        // Set TCP Keepalive to prevent dead connections
+                        let sock_ref = socket2::SockRef::from(&socket);
+                        let mut ka = socket2::TcpKeepalive::new();
+                        ka = ka.with_time(Duration::from_secs(60));
+                        ka = ka.with_interval(Duration::from_secs(10));
+                        
+                        if let Err(e) = sock_ref.set_tcp_keepalive(&ka) {
+                             warn!("Failed to set TCP keepalive for {}: {}", addr, e);
+                        }
 
-        let args = args.clone();
-        tokio::spawn(async move {
-            if let Err(e) = handle_client(socket, args).await {
-                error!("Error handling client {}: {}", addr, e);
+                        let args = args.clone();
+                        tokio::spawn(async move {
+                            if let Err(e) = handle_client(socket, args).await {
+                                error!("Error handling client {}: {}", addr, e);
+                            }
+                        });
+                    }
+                    Err(e) => {
+                        error!("Failed to accept connection: {}", e);
+                    }
+                }
             }
-        });
+            _ = tokio::signal::ctrl_c() => {
+                info!("Received shutdown signal, stopping server...");
+                break;
+            }
+        }
     }
+
+    Ok(())
+}
 }
 
 async fn handle_client(mut client_stream: TcpStream, args: Arc<Args>) -> Result<()> {
@@ -258,7 +275,7 @@ async fn handle_client(mut client_stream: TcpStream, args: Arc<Args>) -> Result<
 }
 
 async fn handle_udp(socket: TokioUdpSocket, client_addr: SocketAddr) -> Result<()> {
-    let mut buf = [0u8; 65535];
+    let mut buf = vec![0u8; 65535];
     let header_offset = 300; // Reserve space for header prepending
     let mut client_udp_addr: Option<SocketAddr> = None;
     let client_ip = client_addr.ip();
