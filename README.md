@@ -138,6 +138,25 @@ launchctl load ~/Library/LaunchAgents/com.user.rust-socks5.plist
 Start-Process -FilePath ".\rust-socks5-tool.exe" -ArgumentList "--port 1080" -NoNewWindow -PassThru
 ```
 
+### Docker 部署
+
+本项目提供了 `Dockerfile`，你可以直接构建并运行 Docker 容器。
+
+1. 构建镜像:
+   ```bash
+   docker build -t rust-socks5-tool .
+   ```
+
+2. 运行容器:
+   ```bash
+   docker run -d -p 1080:1080 --name socks5 rust-socks5-tool
+   ```
+
+   或者带参数运行:
+   ```bash
+   docker run -d -p 1080:1080 --name socks5 rust-socks5-tool rust-socks5-tool -u myuser -w mypass
+   ```
+
 ## CI/CD 持续集成
 
 本项目使用 GitHub Actions 进行持续集成。

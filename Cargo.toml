@@ -14,6 +14,7 @@ anyhow = "1.0"
 clap = { version = "4.4", features = ["derive"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+socket2 = "0.6.1"
 
 # Windows XP/2003 support requires older MSVC toolchain or MinGW, but Rust dropped support for XP.
 # We can try to target i686-pc-windows-msvc for 32-bit support which covers older 32-bit systems,

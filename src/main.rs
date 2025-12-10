@@ -50,6 +50,16 @@ async fn main() -> Result<()> {
         let (socket, addr) = listener.accept().await?;
         info!("Accepted connection from {}", addr);
 
+        // Set TCP Keepalive to prevent dead connections
+        let sock_ref = socket2::SockRef::from(&socket);
+        let mut ka = socket2::TcpKeepalive::new();
+        ka = ka.with_time(Duration::from_secs(60));
+        ka = ka.with_interval(Duration::from_secs(10));
+        
+        if let Err(e) = sock_ref.set_tcp_keepalive(&ka) {
+             warn!("Failed to set TCP keepalive for {}: {}", addr, e);
+        }
+
         let args = args.clone();
         tokio::spawn(async move {
             if let Err(e) = handle_client(socket, args).await {
