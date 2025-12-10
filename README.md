@@ -59,3 +59,28 @@ Options:
 - 自动在 Ubuntu, macOS, 和 Windows 上构建。
 - 推送 `v*` 标签（如 `v0.1.0`）时自动发布 Release 并上传构建产物。
 
+## 更新日志
+
+### v0.1.6 (2025-12-10)
+- **新特性**:
+  - 支持用户名/密码认证 (RFC 1929)。
+  - 支持 UDP ASSOCIATE 协议（基础握手）。
+  - 新增多架构支持：Linux ARM64 (`aarch64`) 和 Windows 32位 (`i686`, 兼容 XP/2003)。
+  - CLI 帮助信息全面中文化。
+- **修复**:
+  - 修复 Windows 构建脚本在 PowerShell 环境下的兼容性问题。
+
+### v0.1.3
+- **修复**: 修正 Windows 平台 UPX 压缩产物的上传路径问题。
+
+### v0.1.2
+- **优化**: 集成 UPX 压缩工具，显著减小 Linux 和 Windows 平台的二进制文件体积。
+
+### v0.1.1
+- **优化**: 引入 `tracing` 结构化日志系统。
+- **优化**: 精简 `tokio` 依赖特性，进一步减小二进制体积。
+
+### v0.1.0
+- **初始发布**: 实现基础 SOCKS5 CONNECT 代理功能。
+- **自动化**: 配置 GitHub Actions 实现多平台（Linux/macOS/Windows）自动构建与发布。
+
