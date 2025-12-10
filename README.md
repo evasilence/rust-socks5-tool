@@ -165,6 +165,14 @@ Start-Process -FilePath ".\rust-socks5-tool.exe" -ArgumentList "--port 1080" -No
 
 ## 更新日志
 
+### v0.1.7 (2025-12-10)
+- **新特性**:
+  - **完整 UDP 支持**: 实现了完整的 UDP ASSOCIATE 数据转发，支持域名解析和双向通信。
+  - **Docker 支持**: 新增 `Dockerfile`，支持容器化部署。
+  - **网络优化**: 启用 TCP Keepalive（60s 空闲检测），防止连接假死。
+- **文档**:
+  - 新增 Systemd (Linux), Launchd (macOS), NSSM (Windows) 服务配置指南。
+
 ### v0.1.6 (2025-12-10)
 - **新特性**:
   - 支持用户名/密码认证 (RFC 1929)。
