@@ -9,21 +9,21 @@ use tokio::time::timeout;
 use tracing::{error, info, warn};
 
 #[derive(Parser, Debug)]
-#[command(author, version, about, long_about = None)]
+#[command(author, version, about = "一个轻量级的 SOCKS5 代理工具", long_about = None)]
 struct Args {
-    /// Port to listen on
+    /// 监听端口
     #[arg(short, long, default_value_t = 1080)]
     port: u16,
 
-    /// Address to listen on
+    /// 监听地址
     #[arg(short, long, default_value = "0.0.0.0")]
     address: String,
 
-    /// Username for authentication (optional)
+    /// 认证用户名 (可选)
     #[arg(short = 'u', long)]
     username: Option<String>,
 
-    /// Password for authentication (optional)
+    /// 认证密码 (可选)
     #[arg(short = 'w', long)]
     password: Option<String>,
 }
