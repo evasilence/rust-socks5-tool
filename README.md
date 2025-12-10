@@ -1,14 +1,19 @@
 # Rust SOCKS5 工具
 
+![GitHub Release](https://img.shields.io/github/v/release/evasilence/rust-socks5-tool)
+![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/evasilence/rust-socks5-tool/release.yml)
+![GitHub License](https://img.shields.io/github/license/evasilence/rust-socks5-tool)
+
 一个使用 Rust 编写的轻量级 SOCKS5 代理工具，专为小体积二进制文件和多平台支持而设计。
 
 ## 功能特性
 
-- **SOCKS5 协议**: 支持 CONNECT 和 UDP ASSOCIATE 命令。
-- **认证支持**: 支持无认证（NO AUTH）模式和用户名/密码认证（USER/PASS）。
-- **异步 I/O**: 基于 `tokio` 构建，提供高性能并发处理。
-- **体积小巧**: 经过优化的发布配置文件，并使用 UPX 压缩，确保二进制文件体积最小。
-- **多平台/多架构**: 支持 Linux (x64/ARM64), macOS (Intel/Apple Silicon), Windows (x64/x86 兼容 XP/2003)。
+- **协议全面**: 完整支持 SOCKS5 (RFC 1928) 标准，包括 CONNECT (TCP) 和 UDP ASSOCIATE (UDP)。
+- **认证支持**: 支持无认证（NO AUTH）模式和用户名/密码认证（RFC 1929）。
+- **高性能**: 基于 `tokio` 异步运行时，支持高并发连接；启用 TCP Keepalive 防止连接假死。
+- **体积小巧**: 经过极致优化的发布配置，并集成 UPX 压缩，二进制文件极小。
+- **多平台**: 自动构建 Linux (x64/ARM64), macOS (Intel/Apple Silicon), Windows (x64/x86 兼容 XP/2003)。
+- **容器化**: 提供 Dockerfile，支持一键容器化部署。
 
 ## 快速开始
 
