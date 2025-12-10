@@ -44,22 +44,39 @@ jobs:
       - name: Build
         run: cargo build --release --target ${{ matrix.target }}
 
-      - name: Install UPX
-        uses: crazy-max/ghaction-upx@v3
-        with:
-          install-only: true
-
-      - name: Compress with UPX
-        if: matrix.os != 'macos-latest'
-        run: upx --best --lzma target/${{ matrix.target }}/release/${{ matrix.binary_name }}
-
       - name: Prepare Asset
         shell: bash
         run: |
           cp target/${{ matrix.target }}/release/${{ matrix.binary_name }} ${{ matrix.asset_name }}
 
+      - name: Install UPX
+        if: matrix.os == 'ubuntu-latest' || matrix.os == 'windows-latest'
+        shell: bash
+        run: |
+          if [ "${{ matrix.os }}" == "ubuntu-latest" ]; then
+            sudo apt-get update && sudo apt-get install -y upx
+          elif [ "${{ matrix.os }}" == "windows-latest" ]; then
+            choco install upx
+          fi
+
+      - name: Compress with UPX
+        if: matrix.os == 'ubuntu-latest' || matrix.os == 'windows-latest'
+        shell: bash
+        run: |
+          if [ "${{ matrix.os }}" == "ubuntu-latest" ]; then
+            cp ${{ matrix.asset_name }} ${{ matrix.asset_name }}-upx
+            upx --best --lzma ${{ matrix.asset_name }}-upx
+          elif [ "${{ matrix.os }}" == "windows-latest" ]; then
+            UPX_NAME="${{ matrix.asset_name }}"
+            UPX_NAME="${UPX_NAME/.exe/-upx.exe}"
+            cp ${{ matrix.asset_name }} $UPX_NAME
+            upx --best --lzma $UPX_NAME
+          fi
+
       - name: Upload Release Asset
         uses: softprops/action-gh-release@v1
         if: startsWith(github.ref, 'refs/tags/')
         with:
-          files: ${{ matrix.asset_name }}
+          files: |
+            ${{ matrix.asset_name }}
+            ${{ matrix.asset_name }}*upx*
