@@ -1,6 +1,5 @@
 use anyhow::{Context, Result};
 use clap::Parser;
-use std::net::{SocketAddr, UdpSocket};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -261,13 +260,6 @@ async fn handle_udp(socket: TokioUdpSocket) -> Result<()> {
         // or we can implement a basic forwarder if strictly required.
         warn!("Received UDP packet of size {} from {}, but full UDP relay is not fully implemented in this lightweight version.", len, src_addr);
     }
-}
-
-async fn reply_error(stream: &mut TcpStream, rep: u8) -> Result<()> {
-    stream
-        .write_all(&[0x05, rep, 0x00, 0x01, 0, 0, 0, 0, 0, 0])
-        .await?;
-    Ok(())
 }
 
 async fn reply_error(stream: &mut TcpStream, rep: u8) -> Result<()> {
