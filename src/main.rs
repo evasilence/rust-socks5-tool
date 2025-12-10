@@ -70,6 +70,7 @@ async fn main() -> Result<()> {
 }
 
 async fn handle_client(mut client_stream: TcpStream, args: Arc<Args>) -> Result<()> {
+    let client_addr = client_stream.peer_addr()?;
     // Wrap the entire handshake and request process in a timeout
     let (mut client_stream, target_stream_opt, udp_associate) = timeout(TIMEOUT_DURATION, async {
         // 1. Handshake
@@ -246,7 +247,7 @@ async fn handle_client(mut client_stream: TcpStream, args: Arc<Args>) -> Result<
                 // TCP connection closed or error, close UDP socket
                 info!("TCP control connection closed, stopping UDP associate");
             }
-            res = handle_udp(udp_socket) => {
+            res = handle_udp(udp_socket, client_addr) => {
                 res.context("UDP handling failed")?;
             }
         }
@@ -255,20 +256,96 @@ async fn handle_client(mut client_stream: TcpStream, args: Arc<Args>) -> Result<
     Ok(())
 }
 
-async fn handle_udp(socket: TokioUdpSocket) -> Result<()> {
+async fn handle_udp(socket: TokioUdpSocket, client_addr: SocketAddr) -> Result<()> {
     let mut buf = [0u8; 65535];
+    let header_offset = 300; // Reserve space for header prepending
+    let mut client_udp_addr: Option<SocketAddr> = None;
+    let client_ip = client_addr.ip();
+
     loop {
-        let (len, src_addr) = socket.recv_from(&mut buf).await?;
-        // Simple UDP relay logic would go here. 
-        // SOCKS5 UDP is complex because it requires parsing the header to find the target,
-        // then forwarding, and wrapping the response.
-        // For a "lightweight" tool, a full UDP implementation is quite large.
-        // This is a placeholder for where the UDP packet handling logic resides.
-        // Implementing full SOCKS5 UDP relay correctly requires managing a mapping table
-        // and handling fragmentation, which significantly increases code size.
-        // For now, we acknowledge the request but don't forward packets to keep it simple/small
-        // or we can implement a basic forwarder if strictly required.
-        warn!("Received UDP packet of size {} from {}, but full UDP relay is not fully implemented in this lightweight version.", len, src_addr);
+        // Read into buffer with offset
+        let (len, src_addr) = socket.recv_from(&mut buf[header_offset..]).await?;
+        let packet = &buf[header_offset..header_offset + len];
+
+        if src_addr.ip() == client_ip {
+            // Packet from Client -> Target
+            client_udp_addr = Some(src_addr);
+
+            // Parse SOCKS5 UDP Header
+            if len < 3 || packet[0] != 0x00 || packet[1] != 0x00 || packet[2] != 0x00 {
+                continue; // Invalid header or fragmentation
+            }
+
+            let atyp = packet[3];
+            let (target_addr, header_len) = match atyp {
+                0x01 => { // IPv4
+                    if len < 10 { continue; }
+                    let ip = std::net::Ipv4Addr::new(packet[4], packet[5], packet[6], packet[7]);
+                    let port = u16::from_be_bytes([packet[8], packet[9]]);
+                    (SocketAddr::V4(std::net::SocketAddrV4::new(ip, port)), 10)
+                }
+                0x03 => { // Domain
+                    let domain_len = packet[4] as usize;
+                    if len < 5 + domain_len + 2 { continue; }
+                    let domain = String::from_utf8_lossy(&packet[5..5 + domain_len]);
+                    let port = u16::from_be_bytes([packet[5 + domain_len], packet[5 + domain_len + 1]]);
+                    match tokio::net::lookup_host(format!("{}:{}", domain, port)).await {
+                        Ok(mut addrs) => {
+                            if let Some(addr) = addrs.next() {
+                                (addr, 5 + domain_len + 2)
+                            } else { continue; }
+                        }
+                        Err(_) => continue,
+                    }
+                }
+                0x04 => { // IPv6
+                    if len < 22 { continue; }
+                    let ip = std::net::Ipv6Addr::from([
+                        packet[4], packet[5], packet[6], packet[7], packet[8], packet[9], packet[10], packet[11],
+                        packet[12], packet[13], packet[14], packet[15], packet[16], packet[17], packet[18], packet[19]
+                    ]);
+                    let port = u16::from_be_bytes([packet[20], packet[21]]);
+                    (SocketAddr::V6(std::net::SocketAddrV6::new(ip, port, 0, 0)), 22)
+                }
+                _ => continue,
+            };
+
+            let payload = &packet[header_len..];
+            if let Err(e) = socket.send_to(payload, target_addr).await {
+                warn!("Failed to forward UDP packet to {}: {}", target_addr, e);
+            }
+
+        } else {
+            // Packet from Target -> Client
+            if let Some(client_udp) = client_udp_addr {
+                // Prepend SOCKS5 UDP Header
+                let (addr_bytes, port, atyp) = match src_addr {
+                    SocketAddr::V4(a) => (a.ip().octets().to_vec(), a.port(), 0x01),
+                    SocketAddr::V6(a) => (a.ip().octets().to_vec(), a.port(), 0x04),
+                };
+
+                let header_len = 4 + addr_bytes.len() + 2;
+                let start_idx = header_offset - header_len;
+
+                buf[start_idx] = 0x00; // RSV
+                buf[start_idx + 1] = 0x00; // RSV
+                buf[start_idx + 2] = 0x00; // FRAG
+                buf[start_idx + 3] = atyp; // ATYP
+
+                for (i, b) in addr_bytes.iter().enumerate() {
+                    buf[start_idx + 4 + i] = *b;
+                }
+
+                let port_bytes = port.to_be_bytes();
+                buf[start_idx + 4 + addr_bytes.len()] = port_bytes[0];
+                buf[start_idx + 4 + addr_bytes.len() + 1] = port_bytes[1];
+
+                let total_len = header_len + len;
+                if let Err(e) = socket.send_to(&buf[start_idx..start_idx + total_len], client_udp).await {
+                    warn!("Failed to send UDP response to client {}: {}", client_udp, e);
+                }
+            }
+        }
     }
 }
 
