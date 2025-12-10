@@ -98,6 +98,7 @@ jobs:
         run: |
           if [ "${{ matrix.os }}" == "ubuntu-latest" ]; then
             cp ${{ matrix.asset_name }} ${{ matrix.asset_name }}-upx
+            chmod +x ${{ matrix.asset_name }}-upx
             upx --best --lzma ${{ matrix.asset_name }}-upx
           elif [ "${{ matrix.os }}" == "windows-latest" ]; then
             UPX_NAME="${{ matrix.asset_name }}"
