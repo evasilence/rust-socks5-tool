@@ -44,6 +44,15 @@ jobs:
       - name: Build
         run: cargo build --release --target ${{ matrix.target }}
 
+      - name: Install UPX
+        uses: crazy-max/ghaction-upx@v3
+        with:
+          install-only: true
+
+      - name: Compress with UPX
+        if: matrix.os != 'macos-latest'
+        run: upx --best --lzma target/${{ matrix.target }}/release/${{ matrix.binary_name }}
+
       - name: Prepare Asset
         shell: bash
         run: |
