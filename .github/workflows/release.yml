@@ -16,18 +16,36 @@ jobs:
     strategy:
       matrix:
         include:
+          # Linux x86_64
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             binary_name: rust-socks5-tool
             asset_name: rust-socks5-tool-linux-amd64
+          # Linux ARM64
+          - os: ubuntu-latest
+            target: aarch64-unknown-linux-gnu
+            binary_name: rust-socks5-tool
+            asset_name: rust-socks5-tool-linux-arm64
+          # macOS x86_64 (Intel)
           - os: macos-latest
             target: x86_64-apple-darwin
             binary_name: rust-socks5-tool
             asset_name: rust-socks5-tool-darwin-amd64
+          # macOS ARM64 (Apple Silicon)
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            binary_name: rust-socks5-tool
+            asset_name: rust-socks5-tool-darwin-arm64
+          # Windows x86_64
           - os: windows-latest
             target: x86_64-pc-windows-msvc
             binary_name: rust-socks5-tool.exe
             asset_name: rust-socks5-tool-windows-amd64.exe
+          # Windows x86 (32-bit) - Better compatibility for older Windows (XP/2003 requires specific toolchain, but i686 is the best bet)
+          - os: windows-latest
+            target: i686-pc-windows-msvc
+            binary_name: rust-socks5-tool.exe
+            asset_name: rust-socks5-tool-windows-x86.exe
 
     steps:
       - name: Checkout code
@@ -38,11 +56,25 @@ jobs:
         with:
           targets: ${{ matrix.target }}
 
+      - name: Install Cross-Compilation Tools (Linux ARM64)
+        if: matrix.target == 'aarch64-unknown-linux-gnu'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu
+
       - name: Cache Cargo dependencies
         uses: swatinem/rust-cache@v2
 
       - name: Build
-        run: cargo build --release --target ${{ matrix.target }}
+        run: |
+          if [ "${{ matrix.target }}" == "aarch64-unknown-linux-gnu" ]; then
+            # Use cross for ARM64 Linux if needed, or configure linker
+            # Simple linker config for aarch64-unknown-linux-gnu
+            export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc
+            cargo build --release --target ${{ matrix.target }}
+          else
+            cargo build --release --target ${{ matrix.target }}
+          fi
 
       - name: Prepare Asset
         shell: bash

@@ -15,6 +15,11 @@ clap = { version = "4.4", features = ["derive"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
+# Windows XP/2003 support requires older MSVC toolchain or MinGW, but Rust dropped support for XP.
+# We can try to target i686-pc-windows-msvc for 32-bit support which covers older 32-bit systems,
+# but true XP support is very hard with modern Rust.
+# We will add i686 targets for 32-bit support.
+
 [profile.release]
 opt-level = "z"
 lto = true
