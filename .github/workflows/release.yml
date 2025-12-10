@@ -79,4 +79,4 @@ jobs:
         with:
           files: |
             ${{ matrix.asset_name }}
-            ${{ matrix.asset_name }}*upx*
+            rust-socks5-tool*upx*
