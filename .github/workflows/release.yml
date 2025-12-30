@@ -18,7 +18,7 @@ jobs:
         include:
           # Linux x86_64
           - os: ubuntu-latest
-            target: x86_64-unknown-linux-gnu
+            target: x86_64-unknown-linux-musl
             binary_name: rust-socks5-tool
             asset_name: rust-socks5-tool-linux-amd64
           # Linux ARM64
@@ -55,6 +55,12 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
+
+      - name: Install Musl Tools
+        if: contains(matrix.target, 'musl')
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y musl-tools
 
       - name: Install Cross-Compilation Tools (Linux ARM64)
         if: matrix.target == 'aarch64-unknown-linux-gnu'
