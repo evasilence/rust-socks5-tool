@@ -67,7 +67,17 @@ async fn main() -> Result<()> {
                         let args = args.clone();
                         tokio::spawn(async move {
                             if let Err(e) = handle_client(socket, args).await {
-                                error!("Error handling client {}: {}", addr, e);
+                                let msg = e.to_string();
+                                // Reduce log level for common scanner/bot errors
+                                if msg.contains("Authentication failed") 
+                                    || msg.contains("early eof") 
+                                    || msg.contains("unexpected end of file")
+                                    || msg.contains("Handshake/Connection timeout") 
+                                    || msg.contains("No supported authentication methods") {
+                                    warn!("Client warning {}: {}", addr, msg);
+                                } else {
+                                    error!("Error handling client {}: {}", addr, e);
+                                }
                             }
                         });
                     }
