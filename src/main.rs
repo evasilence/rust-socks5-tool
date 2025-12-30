@@ -85,7 +85,6 @@ async fn main() -> Result<()> {
 
     Ok(())
 }
-}
 
 async fn handle_client(mut client_stream: TcpStream, args: Arc<Args>) -> Result<()> {
     let client_addr = client_stream.peer_addr()?;
