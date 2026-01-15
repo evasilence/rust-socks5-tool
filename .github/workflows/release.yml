@@ -79,6 +79,10 @@ jobs:
             # Simple linker config for aarch64-unknown-linux-gnu
             export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc
             cargo build --release --target ${{ matrix.target }}
+          elif [[ "${{ matrix.target }}" == *"windows-msvc"* ]]; then
+            # Statically link CRT for Windows to avoid missing VCRUNTIME140.dll
+            export RUSTFLAGS="-C target-feature=+crt-static"
+            cargo build --release --target ${{ matrix.target }}
           else
             cargo build --release --target ${{ matrix.target }}
           fi
