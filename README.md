@@ -3,6 +3,8 @@
 [![Build Status](https://github.com/evasilence/rust-socks5-tool/actions/workflows/release.yml/badge.svg)](https://github.com/evasilence/rust-socks5-tool/actions)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
+[English](./README.md) | [中文](./README_CN.md)
+
 A lightweight, high-performance SOCKS5 proxy tool written in Rust. Supports TCP/UDP, authentication, and cross-platform usage.
 
 ## Features
