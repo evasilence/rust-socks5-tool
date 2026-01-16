@@ -214,7 +214,7 @@ async fn handle_client(mut client_stream: TcpStream, args: Arc<Args>) -> Result<
         if cmd == 0x01 {
             // CONNECT
             info!("CONNECT target: {}", target_addr_str);
-            let target_stream = match TcpStream::connect(&target_addr_str).await {
+            let target_stream = match connect_to_target(&target_addr_str).await {
                 Ok(stream) => stream,
                 Err(e) => {
                     error!("Failed to connect to target {}: {}", target_addr_str, e);
@@ -381,4 +381,29 @@ async fn reply_error(stream: &mut TcpStream, rep: u8) -> Result<()> {
         .write_all(&[0x05, rep, 0x00, 0x01, 0, 0, 0, 0, 0, 0])
         .await?;
     Ok(())
+}
+
+async fn connect_to_target(target_addr: &str) -> std::io::Result<TcpStream> {
+    let addrs = tokio::net::lookup_host(target_addr).await?;
+    let mut addrs: Vec<SocketAddr> = addrs.collect();
+    
+    // Sort addresses to prefer IPv4
+    addrs.sort_by(|a, b| {
+        if a.is_ipv4() && b.is_ipv6() {
+            std::cmp::Ordering::Less
+        } else if a.is_ipv6() && b.is_ipv4() {
+            std::cmp::Ordering::Greater
+        } else {
+            std::cmp::Ordering::Equal
+        }
+    });
+
+    for addr in addrs {
+        match TcpStream::connect(addr).await {
+            Ok(stream) => return Ok(stream),
+            Err(_) => continue,
+        }
+    }
+
+    Err(std::io::Error::new(std::io::ErrorKind::Other, "Failed to connect to any resolved address"))
 }
