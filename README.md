@@ -49,11 +49,15 @@ cargo build --release
 选项:
   -p, --port <PORT>          监听端口 [默认: 1080]
   -a, --address <ADDRESS>    监听地址 [默认: 0.0.0.0]
-  -u, --username <USERNAME>  认证用户名 (可选)
-  -w, --password <PASSWORD>  认证密码 (可选)
+  -u, --username <USERNAME>  认证用户名 (可选，须与 --password 同时使用)
+  -w, --password <PASSWORD>  认证密码 (可选，须与 --username 同时使用)
+  -v, --debug                启用调试日志 (等同于 RUST_LOG=debug)
   -h, --help                 打印帮助信息
   -V, --version              打印版本信息
 ```
+
+> **注意：** `--username` 与 `--password` 必须同时提供。
+> 日志级别也可通过 `RUST_LOG` 环境变量控制（例如 `RUST_LOG=debug ./rust-socks5-tool`）。
 
 ### 示例
 
@@ -73,6 +77,14 @@ cargo build --release
 
 ```bash
 ./rust-socks5-tool --username myuser --password mysecret
+```
+
+**4. 启用调试日志：**
+
+```bash
+./rust-socks5-tool --debug
+# 或通过环境变量
+RUST_LOG=debug ./rust-socks5-tool
 ```
 
 ## 客户端配置

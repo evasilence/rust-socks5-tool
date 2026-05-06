@@ -49,11 +49,16 @@ Usage: rust-socks5-tool [OPTIONS]
 Options:
   -p, --port <PORT>          Listening port [default: 1080]
   -a, --address <ADDRESS>    Listening address [default: 0.0.0.0]
-  -u, --username <USERNAME>  Authentication username (optional)
-  -w, --password <PASSWORD>  Authentication password (optional)
+  -u, --username <USERNAME>  Authentication username (optional, must be paired with --password)
+  -w, --password <PASSWORD>  Authentication password (optional, must be paired with --username)
+  -v, --debug                Enable debug logging (equivalent to RUST_LOG=debug)
   -h, --help                 Print help
   -V, --version              Print version
 ```
+
+> **Note:** `--username` and `--password` must always be provided together.
+> Log verbosity can also be controlled via the `RUST_LOG` environment variable
+> (e.g. `RUST_LOG=debug ./rust-socks5-tool`).
 
 ### Examples
 
@@ -73,6 +78,14 @@ Options:
 
 ```bash
 ./rust-socks5-tool --username myuser --password mysecret
+```
+
+**4. Enable debug logging:**
+
+```bash
+./rust-socks5-tool --debug
+# or via environment variable
+RUST_LOG=debug ./rust-socks5-tool
 ```
 
 ## Client Configuration

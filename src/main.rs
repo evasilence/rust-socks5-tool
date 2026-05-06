@@ -6,7 +6,8 @@ use std::time::Duration;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream, UdpSocket as TokioUdpSocket};
 use tokio::time::timeout;
-use tracing::{error, info, warn};
+use tracing::{debug, error, info, warn};
+use tracing_subscriber::EnvFilter;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about = "一个轻量级的 SOCKS5 代理工具", long_about = None)]
@@ -26,16 +27,39 @@ struct Args {
     /// 认证密码 (可选)
     #[arg(short = 'w', long)]
     password: Option<String>,
+
+    /// 启用调试日志 (等同于 RUST_LOG=debug)
+    #[arg(short = 'v', long)]
+    debug: bool,
 }
 
 const TIMEOUT_DURATION: Duration = Duration::from_secs(10);
 
+// Maximum SOCKS5 UDP header size:
+//   RSV (2 bytes) + FRAG (1 byte) + ATYP (1 byte) + domain (max 255 bytes) + port (2 bytes) = 261 bytes.
+//   Rounded up to 300 to leave a small alignment margin.
+const UDP_HEADER_RESERVE: usize = 300;
+
 #[tokio::main]
 async fn main() -> Result<()> {
-    // Initialize logging
-    tracing_subscriber::fmt::init();
-
     let args = Arc::new(Args::parse());
+
+    // Validate that username and password are always provided together
+    if matches!(
+        (&args.username, &args.password),
+        (Some(_), None) | (None, Some(_))
+    ) {
+        anyhow::bail!("--username and --password must be provided together");
+    }
+
+    // Initialize logging: --debug flag overrides RUST_LOG, otherwise respect RUST_LOG
+    let filter = if args.debug {
+        EnvFilter::new("debug")
+    } else {
+        EnvFilter::from_default_env()
+    };
+    tracing_subscriber::fmt().with_env_filter(filter).init();
+
     let bind_addr = format!("{}:{}", args.address, args.port);
 
     let listener = TcpListener::bind(&bind_addr)
@@ -218,7 +242,7 @@ async fn handle_client(mut client_stream: TcpStream, args: Arc<Args>) -> Result<
                 Ok(stream) => stream,
                 Err(e) => {
                     error!("Failed to connect to target {}: {}", target_addr_str, e);
-                    reply_error(&mut client_stream, 0x04).await?; // Host unreachable
+                    reply_error(&mut client_stream, socks5_connect_error_code(&e)).await?;
                     return Err(e.into());
                 }
             };
@@ -253,16 +277,14 @@ async fn handle_client(mut client_stream: TcpStream, args: Arc<Args>) -> Result<
     .context("Handshake/Connection timeout")??;
 
     if let Some(mut target_stream) = target_stream_opt {
-        // TCP Relay
-        let (mut client_reader, mut client_writer) = client_stream.split();
-        let (mut target_reader, mut target_writer) = target_stream.split();
-
-        let client_to_target = tokio::io::copy(&mut client_reader, &mut target_writer);
-        let target_to_client = tokio::io::copy(&mut target_reader, &mut client_writer);
-
-        tokio::select! {
-            res = client_to_target => { res.context("Client to target failed")?; }
-            res = target_to_client => { res.context("Target to client failed")?; }
+        // TCP Relay: copy_bidirectional correctly handles half-close — when one side
+        // reaches EOF it shuts down the write-half of the other side before returning.
+        if let Err(e) = tokio::io::copy_bidirectional(&mut client_stream, &mut target_stream).await {
+            // Connection reset and broken pipe are normal peer-close events, not real errors.
+            let kind = e.kind();
+            if kind != std::io::ErrorKind::ConnectionReset && kind != std::io::ErrorKind::BrokenPipe {
+                return Err(e).context("TCP relay failed");
+            }
         }
     } else if let Some(udp_socket) = udp_associate {
         // UDP Relay
@@ -285,7 +307,7 @@ async fn handle_client(mut client_stream: TcpStream, args: Arc<Args>) -> Result<
 
 async fn handle_udp(socket: TokioUdpSocket, client_addr: SocketAddr) -> Result<()> {
     let mut buf = vec![0u8; 65535];
-    let header_offset = 300; // Reserve space for header prepending
+    let header_offset = UDP_HEADER_RESERVE;
     let mut client_udp_addr: Option<SocketAddr> = None;
     let client_ip = client_addr.ip();
 
@@ -386,7 +408,14 @@ async fn reply_error(stream: &mut TcpStream, rep: u8) -> Result<()> {
 async fn connect_to_target(target_addr: &str) -> std::io::Result<TcpStream> {
     let addrs = tokio::net::lookup_host(target_addr).await?;
     let mut addrs: Vec<SocketAddr> = addrs.collect();
-    
+
+    if addrs.is_empty() {
+        return Err(std::io::Error::other(format!(
+            "No addresses resolved for {}",
+            target_addr
+        )));
+    }
+
     // Sort addresses to prefer IPv4
     addrs.sort_by(|a, b| {
         if a.is_ipv4() && b.is_ipv6() {
@@ -398,12 +427,28 @@ async fn connect_to_target(target_addr: &str) -> std::io::Result<TcpStream> {
         }
     });
 
-    for addr in addrs {
+    let mut last_err: Option<std::io::Error> = None;
+    for addr in &addrs {
         match TcpStream::connect(addr).await {
-            Ok(stream) => return Ok(stream),
-            Err(_) => continue,
+            Ok(stream) => {
+                debug!("Connected to {} via {}", target_addr, addr);
+                return Ok(stream);
+            }
+            Err(e) => {
+                debug!("Failed to connect to {}: {}", addr, e);
+                last_err = Some(e);
+            }
         }
     }
 
-    Err(std::io::Error::new(std::io::ErrorKind::Other, "Failed to connect to any resolved address"))
+    Err(last_err.unwrap_or_else(|| std::io::Error::other("Failed to connect to any resolved address")))
+}
+
+/// Map a std::io::Error to the most appropriate SOCKS5 reply code.
+fn socks5_connect_error_code(e: &std::io::Error) -> u8 {
+    match e.kind() {
+        std::io::ErrorKind::ConnectionRefused => 0x05, // Connection refused
+        std::io::ErrorKind::TimedOut => 0x04,          // Host unreachable
+        _ => 0x04,                                     // Host unreachable (default)
+    }
 }
