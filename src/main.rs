@@ -35,6 +35,10 @@ struct Args {
 
 const TIMEOUT_DURATION: Duration = Duration::from_secs(10);
 
+// Per-address TCP connect timeout. Prevents a single slow/unreachable address from
+// consuming the entire TIMEOUT_DURATION when multiple addresses are available.
+const CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
+
 // Maximum SOCKS5 UDP header size:
 //   RSV (2 bytes) + FRAG (1 byte) + ATYP (1 byte) + domain (max 255 bytes) + port (2 bytes) = 261 bytes.
 //   Rounded up to 300 to leave a small alignment margin.
@@ -282,7 +286,9 @@ async fn handle_client(mut client_stream: TcpStream, args: Arc<Args>) -> Result<
         if let Err(e) = tokio::io::copy_bidirectional(&mut client_stream, &mut target_stream).await {
             // Connection reset and broken pipe are normal peer-close events, not real errors.
             let kind = e.kind();
-            if kind != std::io::ErrorKind::ConnectionReset && kind != std::io::ErrorKind::BrokenPipe {
+            if kind == std::io::ErrorKind::ConnectionReset || kind == std::io::ErrorKind::BrokenPipe {
+                debug!("TCP relay ended with peer-close event ({}): {}", kind, e);
+            } else {
                 return Err(e).context("TCP relay failed");
             }
         }
@@ -321,8 +327,20 @@ async fn handle_udp(socket: TokioUdpSocket, client_addr: SocketAddr) -> Result<(
             client_udp_addr = Some(src_addr);
 
             // Parse SOCKS5 UDP Header
-            if len < 3 || packet[0] != 0x00 || packet[1] != 0x00 || packet[2] != 0x00 {
-                continue; // Invalid header or fragmentation
+            if len < 4 {
+                debug!("Dropping UDP packet from {}: too short ({} bytes)", src_addr, len);
+                continue;
+            }
+            if packet[0] != 0x00 || packet[1] != 0x00 {
+                debug!("Dropping UDP packet from {}: non-zero RSV bytes", src_addr);
+                continue;
+            }
+            if packet[2] != 0x00 {
+                debug!(
+                    "Dropping fragmented UDP packet from {} (FRAG={}); fragmentation is not supported",
+                    src_addr, packet[2]
+                );
+                continue;
             }
 
             let atyp = packet[3];
@@ -339,8 +357,11 @@ async fn handle_udp(socket: TokioUdpSocket, client_addr: SocketAddr) -> Result<(
                     let domain = String::from_utf8_lossy(&packet[5..5 + domain_len]);
                     let port = u16::from_be_bytes([packet[5 + domain_len], packet[5 + domain_len + 1]]);
                     match tokio::net::lookup_host(format!("{}:{}", domain, port)).await {
-                        Ok(mut addrs) => {
-                            if let Some(addr) = addrs.next() {
+                        Ok(addrs) => {
+                            let mut addrs: Vec<_> = addrs.collect();
+                            // Prefer IPv4 to match TCP relay behaviour
+                            addrs.sort_by_key(|a| u8::from(a.is_ipv6()));
+                            if let Some(addr) = addrs.into_iter().next() {
                                 (addr, 5 + domain_len + 2)
                             } else { continue; }
                         }
@@ -416,27 +437,34 @@ async fn connect_to_target(target_addr: &str) -> std::io::Result<TcpStream> {
         )));
     }
 
-    // Sort addresses to prefer IPv4
-    addrs.sort_by(|a, b| {
-        if a.is_ipv4() && b.is_ipv6() {
-            std::cmp::Ordering::Less
-        } else if a.is_ipv6() && b.is_ipv4() {
-            std::cmp::Ordering::Greater
-        } else {
-            std::cmp::Ordering::Equal
-        }
-    });
+    // Prefer IPv4 to avoid IPv6 connectivity issues on hosts with broken IPv6 routing.
+    addrs.sort_by_key(|a| u8::from(a.is_ipv6()));
 
+    // Note: connect_to_target is always called inside the TIMEOUT_DURATION context timeout,
+    // so the outer 10 s deadline is the hard upper bound on total connection time regardless
+    // of how many per-address CONNECT_TIMEOUT attempts are made.
     let mut last_err: Option<std::io::Error> = None;
     for addr in &addrs {
-        match TcpStream::connect(addr).await {
-            Ok(stream) => {
+        match timeout(CONNECT_TIMEOUT, TcpStream::connect(addr)).await {
+            Ok(Ok(stream)) => {
+                // Disable Nagle's algorithm so small writes are sent immediately;
+                // important for interactive protocols tunnelled through the proxy.
+                if let Err(e) = stream.set_nodelay(true) {
+                    warn!("Failed to set TCP_NODELAY for {}: {}", addr, e);
+                }
                 debug!("Connected to {} via {}", target_addr, addr);
                 return Ok(stream);
             }
-            Err(e) => {
+            Ok(Err(e)) => {
                 debug!("Failed to connect to {}: {}", addr, e);
                 last_err = Some(e);
+            }
+            Err(_elapsed) => {
+                debug!("Connect to {} timed out", addr);
+                last_err = Some(std::io::Error::new(
+                    std::io::ErrorKind::TimedOut,
+                    format!("connect to {} timed out", addr),
+                ));
             }
         }
     }
@@ -448,6 +476,7 @@ async fn connect_to_target(target_addr: &str) -> std::io::Result<TcpStream> {
 fn socks5_connect_error_code(e: &std::io::Error) -> u8 {
     match e.kind() {
         std::io::ErrorKind::ConnectionRefused => 0x05, // Connection refused
+        std::io::ErrorKind::PermissionDenied => 0x02,  // Connection not allowed by ruleset
         std::io::ErrorKind::TimedOut => 0x04,          // Host unreachable
         _ => 0x04,                                     // Host unreachable (default)
     }
